@@ -1,0 +1,6 @@
+step  -1 | next: __start__        | build_attempts=- test_attempts=- review_rounds=- compile_status=- test_status=- review_approved=-
+step   0 | next: agent            | build_attempts=- test_attempts=- review_rounds=- compile_status=- test_status=- review_approved=-
+step   1 | next: gradle_build     | build_attempts=- test_attempts=- review_rounds=- compile_status=- test_status=- review_approved=-
+step   2 | next: gradle_test      | build_attempts=1 test_attempts=- review_rounds=- compile_status=True test_status=- review_approved=-
+step   3 | next: reviewer         | build_attempts=1 test_attempts=1 review_rounds=- compile_status=True test_status=True review_approved=-
+step   4 | next: END              | build_attempts=1 test_attempts=1 review_rounds=1 compile_status=True test_status=True review_approved=True

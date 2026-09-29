@@ -1,0 +1,1542 @@
+########## main graph: task, developer, build, tests, reviewer verdicts ##########
+
+--- human:
+Create a Spring Boot service named calculator-service from scratch: a REST API for a basic calculator. GET /api/v1/calculator/{operation}?a=<number>&b=<number> returns JSON {"result": <number>}. Operations: add, subtract, multiply, divide, power (a to the power of b), sqrt (square root of a, b is not used). Division by zero, the square root of a negative number, an unknown operation or a missing parameter return 400. Use Java 25, the latest Spring Boot 3.5.x and Gradle Kotlin DSL. The Gradle wrapper is already in the project.
+
+--- backend calls list_files:
+
+
+--- list_files result (success):
+.gitignore
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+gradlew
+gradlew.bat
+
+--- backend calls get_java_version:
+
+
+--- backend calls get_gradle_version:
+
+
+--- backend calls get_library_version:
+  group_id: org.springframework.boot
+  artifact_id: spring-boot-gradle-plugin
+
+--- backend calls get_library_version:
+  group_id: io.spring.dependency-management
+  artifact_id: io.spring.dependency-management.gradle.plugin
+
+--- get_java_version result (success):
+openjdk 25.0.4.1 2026-08-18 LTS
+OpenJDK Runtime Environment Temurin-25.0.4.1+1 (build 25.0.4.1+1-LTS)
+OpenJDK 64-Bit Server VM Temurin-25.0.4.1+1 (build 25.0.4.1+1-LTS, mixed mode, sharing)
+
+
+--- get_gradle_version result (success):
+
+------------------------------------------------------------
+Gradle 9.8.0
+------------------------------------------------------------
+
+Build time:    2026-09-24 13:40:00 UTC
+Revision:      a927be5e08efe79e0b87ada06c762dde6bb9f8b8
+
+Kotlin:        2.4.10
+Groovy:        4.0.33
+Ant:           Apache Ant(TM) version 1.10.17 compiled on April 6 2026
+Launcher JVM:  25.0.4.1 (Eclipse Adoptium 25.0.4.1+1-LTS)
+Daemon JVM:    C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot (no Daemon JVM specified, using current Java home)
+OS:            Windows 10 10.0 amd64
+
+
+
+--- get_library_version result (success):
+Latest stable version of org.springframework.boot:spring-boot-gradle-plugin: 4.1.1
+Latest version of each recent release line: 3.2.12, 3.3.13, 3.4.13, 3.5.16, 4.0.8, 4.1.1
+
+--- get_library_version result (success):
+Latest stable version of io.spring.dependency-management:io.spring.dependency-management.gradle.plugin: 1.1.7
+Latest version of each recent release line: 1.1.7
+
+--- backend says:
+Now let's create the project files.
+
+--- backend calls write_file:
+  path: settings.gradle.kts
+  content:
+rootProject.name = "calculator-service"
+
+
+--- backend calls write_file:
+  path: build.gradle.kts
+  content:
+plugins {
+    java
+    id("org.springframework.boot") version "3.5.16"
+    id("io.spring.dependency-management") version "1.1.7"
+}
+
+group = "com.example"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+testing {
+    suites {
+        register<JvmTestSuite>("testIntegration") {
+            dependencies {
+                implementation(project())
+            }
+        }
+    }
+}
+
+configurations {
+    named("testIntegrationImplementation") { extendsFrom(testImplementation.get()) }
+    named("testIntegrationRuntimeOnly") { extendsFrom(testRuntimeOnly.get()) }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+tasks.check {
+    dependsOn(testing.suites.named("testIntegration"))
+}
+
+
+--- write_file result (success):
+Written settings.gradle.kts (40 chars).
+
+--- write_file result (success):
+Written build.gradle.kts (1095 chars).
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/CalculatorServiceApplication.java
+  content:
+package com.example.calculatorservice;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CalculatorServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(CalculatorServiceApplication.class, args);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/main/resources/application.yml
+  content:
+spring:
+  application:
+    name: calculator-service
+  threads:
+    virtual:
+      enabled: true
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/Operation.java
+  content:
+package com.example.calculatorservice.calculator;
+
+/**
+ * Supported calculator operations.
+ */
+enum Operation {
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    POWER,
+    SQRT
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculationResponse.java
+  content:
+package com.example.calculatorservice.calculator;
+
+/**
+ * Result of a calculator operation.
+ */
+public record CalculationResponse(double result) {
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java
+  content:
+package com.example.calculatorservice.calculator;
+
+/**
+ * Thrown when a calculation request is invalid: an unknown operation, a missing
+ * parameter, division by zero or the square root of a negative number.
+ */
+public class InvalidCalculationException extends RuntimeException {
+
+    public InvalidCalculationException(String message) {
+        super(message);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorService.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import java.util.Locale;
+import org.springframework.stereotype.Service;
+
+@Service
+class CalculatorService {
+
+    CalculationResponse calculate(String operation, Double a, Double b) {
+        Operation op = parseOperation(operation);
+        validateParameters(op, a, b);
+        double result = switch (op) {
+            case ADD -> a + b;
+            case SUBTRACT -> a - b;
+            case MULTIPLY -> a * b;
+            case DIVIDE -> divide(a, b);
+            case POWER -> Math.pow(a, b);
+            case SQRT -> sqrt(a);
+        };
+        return new CalculationResponse(result);
+    }
+
+    private Operation parseOperation(String operation) {
+        try {
+            return Operation.valueOf(operation.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new InvalidCalculationException("Unknown operation: " + operation);
+        }
+    }
+
+    private void validateParameters(Operation operation, Double a, Double b) {
+        if (a == null) {
+            throw new InvalidCalculationException("Missing required parameter: a");
+        }
+        if (operation != Operation.SQRT && b == null) {
+            throw new InvalidCalculationException("Missing required parameter: b");
+        }
+    }
+
+    private double divide(double a, double b) {
+        if (b == 0) {
+            throw new InvalidCalculationException("Division by zero is not allowed");
+        }
+        return a / b;
+    }
+
+    private double sqrt(double a) {
+        if (a < 0) {
+            throw new InvalidCalculationException("Square root of a negative number is not allowed");
+        }
+        return Math.sqrt(a);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorController.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/calculator")
+class CalculatorController {
+
+    private final CalculatorService calculatorService;
+
+    CalculatorController(CalculatorService calculatorService) {
+        this.calculatorService = calculatorService;
+    }
+
+    @GetMapping("/{operation}")
+    CalculationResponse calculate(
+            @PathVariable String operation,
+            @RequestParam(required = false) Double a,
+            @RequestParam(required = false) Double b) {
+        return calculatorService.calculate(operation, a, b);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorExceptionHandler.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+class CalculatorExceptionHandler {
+
+    @ExceptionHandler(InvalidCalculationException.class)
+    ProblemDetail handleInvalidCalculation(InvalidCalculationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+}
+
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/CalculatorServiceApplication.java (355 chars).
+
+--- write_file result (success):
+Written src/main/resources/application.yml (96 chars).
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/Operation.java (183 chars).
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/CalculationResponse.java (149 chars).
+
+--- write_file result (error):
+Path 'src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java' is outside of the project directory.
+
+--- write_file result (error):
+Path 'src/main/java/com/example/calculatorservice/calculator/CalculatorService.java' is outside of the project directory.
+
+--- write_file result (error):
+Path 'src/main/java/com/example/calculatorservice/calculator/CalculatorController.java' is outside of the project directory.
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/CalculatorExceptionHandler.java (567 chars).
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java
+  content:
+package com.example.calculatorservice.calculator;
+
+/**
+ * Thrown when a calculation request is invalid: an unknown operation, a missing
+ * parameter, division by zero or the square root of a negative number.
+ */
+public class InvalidCalculationException extends RuntimeException {
+
+    public InvalidCalculationException(String message) {
+        super(message);
+    }
+}
+
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java (370 chars).
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorService.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import java.util.Locale;
+import org.springframework.stereotype.Service;
+
+@Service
+class CalculatorService {
+
+    CalculationResponse calculate(String operation, Double a, Double b) {
+        Operation op = parseOperation(operation);
+        validateParameters(op, a, b);
+        double result = switch (op) {
+            case ADD -> a + b;
+            case SUBTRACT -> a - b;
+            case MULTIPLY -> a * b;
+            case DIVIDE -> divide(a, b);
+            case POWER -> Math.pow(a, b);
+            case SQRT -> sqrt(a);
+        };
+        return new CalculationResponse(result);
+    }
+
+    private Operation parseOperation(String operation) {
+        try {
+            return Operation.valueOf(operation.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new InvalidCalculationException("Unknown operation: " + operation);
+        }
+    }
+
+    private void validateParameters(Operation operation, Double a, Double b) {
+        if (a == null) {
+            throw new InvalidCalculationException("Missing required parameter: a");
+        }
+        if (operation != Operation.SQRT && b == null) {
+            throw new InvalidCalculationException("Missing required parameter: b");
+        }
+    }
+
+    private double divide(double a, double b) {
+        if (b == 0) {
+            throw new InvalidCalculationException("Division by zero is not allowed");
+        }
+        return a / b;
+    }
+
+    private double sqrt(double a) {
+        if (a < 0) {
+            throw new InvalidCalculationException("Square root of a negative number is not allowed");
+        }
+        return Math.sqrt(a);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorController.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/calculator")
+class CalculatorController {
+
+    private final CalculatorService calculatorService;
+
+    CalculatorController(CalculatorService calculatorService) {
+        this.calculatorService = calculatorService;
+    }
+
+    @GetMapping("/{operation}")
+    CalculationResponse calculate(
+            @PathVariable String operation,
+            @RequestParam(required = false) Double a,
+            @RequestParam(required = false) Double b) {
+        return calculatorService.calculate(operation, a, b);
+    }
+}
+
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/CalculatorService.java (1697 chars).
+
+--- write_file result (success):
+Written src/main/java/com/example/calculatorservice/calculator/CalculatorController.java (912 chars).
+
+--- backend says:
+Now let's verify everything with a read of the directory listing, then write tests.
+
+--- backend calls list_files:
+
+
+--- list_files result (success):
+.gitignore
+build.gradle.kts
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+gradlew
+gradlew.bat
+settings.gradle.kts
+src/main/java/com/example/calculatorservice/CalculatorServiceApplication.java
+src/main/java/com/example/calculatorservice/calculator/CalculationResponse.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorController.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorExceptionHandler.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorService.java
+src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java
+src/main/java/com/example/calculatorservice/calculator/Operation.java
+src/main/resources/application.yml
+
+--- backend says:
+All main files are present. Now let's write the tests.
+
+--- backend calls write_file:
+  path: src/test/java/com/example/calculatorservice/calculator/CalculatorServiceTest.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+
+class CalculatorServiceTest {
+
+    private final CalculatorService calculatorService = new CalculatorService();
+
+    @Test
+    void shouldAddTwoNumbers() {
+        // given
+        String operation = "add";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 2.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(5.0);
+    }
+
+    @Test
+    void shouldSubtractTwoNumbers() {
+        // given
+        String operation = "subtract";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 5.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(2.0);
+    }
+
+    @Test
+    void shouldMultiplyTwoNumbers() {
+        // given
+        String operation = "multiply";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 4.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(12.0);
+    }
+
+    @Test
+    void shouldDivideTwoNumbers() {
+        // given
+        String operation = "divide";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 6.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(2.0);
+    }
+
+    @Test
+    void shouldThrowWhenDividingByZero() {
+        // given
+        String operation = "divide";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 6.0, 0.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldRaiseToPower() {
+        // given
+        String operation = "power";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 2.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(8.0);
+    }
+
+    @Test
+    void shouldComputeSquareRoot() {
+        // given
+        String operation = "sqrt";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 9.0, null);
+
+        // then
+        assertThat(response.result()).isEqualTo(3.0);
+    }
+
+    @Test
+    void shouldThrowWhenSquareRootOfNegativeNumber() {
+        // given
+        String operation = "sqrt";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, -9.0, null))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenOperationIsUnknown() {
+        // given
+        String operation = "modulo";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 1.0, 2.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenParameterAIsMissing() {
+        // given
+        String operation = "add";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, null, 2.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenParameterBIsMissingForNonSqrtOperation() {
+        // given
+        String operation = "add";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 1.0, null))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/test/java/com/example/calculatorservice/calculator/CalculatorControllerTest.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+@WebMvcTest(CalculatorController.class)
+class CalculatorControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private CalculatorService calculatorService;
+
+    @Test
+    void shouldReturnResultForValidOperation() throws Exception {
+        // given
+        given(calculatorService.calculate("add", 2.0, 3.0)).willReturn(new CalculationResponse(5.0));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "2").param("b", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value(5.0));
+    }
+
+    @Test
+    void shouldReturn400WhenOperationIsUnknown() throws Exception {
+        // given
+        given(calculatorService.calculate(eq("modulo"), any(), any()))
+                .willThrow(new InvalidCalculationException("Unknown operation: modulo"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/modulo").param("a", "1").param("b", "2"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenParameterIsMissing() throws Exception {
+        // given
+        given(calculatorService.calculate(anyString(), any(), any()))
+                .willThrow(new InvalidCalculationException("Missing required parameter: b"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenDividingByZero() throws Exception {
+        // given
+        given(calculatorService.calculate("divide", 1.0, 0.0))
+                .willThrow(new InvalidCalculationException("Division by zero is not allowed"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/divide").param("a", "1").param("b", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenSquareRootOfNegativeNumber() throws Exception {
+        // given
+        given(calculatorService.calculate(eq("sqrt"), eq(-4.0), any()))
+                .willThrow(new InvalidCalculationException("Square root of a negative number is not allowed"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/sqrt").param("a", "-4"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenParameterAIsNotANumber() throws Exception {
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "not-a-number").param("b", "2"))
+                .andExpect(status().isBadRequest());
+    }
+}
+
+
+--- write_file result (success):
+Written src/test/java/com/example/calculatorservice/calculator/CalculatorServiceTest.java (3504 chars).
+
+--- write_file result (success):
+Written src/test/java/com/example/calculatorservice/calculator/CalculatorControllerTest.java (3392 chars).
+
+--- backend calls write_file:
+  path: src/testIntegration/java/com/example/calculatorservice/CalculatorServiceApplicationIT.java
+  content:
+package com.example.calculatorservice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class CalculatorServiceApplicationIT {
+
+    @Test
+    void contextLoads() {
+    }
+}
+
+
+--- backend calls write_file:
+  path: src/testIntegration/java/com/example/calculatorservice/calculator/CalculatorControllerIT.java
+  content:
+package com.example.calculatorservice.calculator;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class CalculatorControllerIT {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    void shouldAddTwoNumbersOverHttp() {
+        // when
+        ResponseEntity<CalculationResponse> response =
+                restTemplate.getForEntity("/api/v1/calculator/add?a=2&b=3", CalculationResponse.class);
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().result()).isEqualTo(5.0);
+    }
+
+    @Test
+    void shouldReturn400ForUnknownOperationOverHttp() {
+        // when
+        ResponseEntity<String> response =
+                restTemplate.getForEntity("/api/v1/calculator/modulo?a=1&b=2", String.class);
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+}
+
+
+--- write_file result (success):
+Written src/testIntegration/java/com/example/calculatorservice/CalculatorServiceApplicationIT.java (237 chars).
+
+--- write_file result (success):
+Written src/testIntegration/java/com/example/calculatorservice/calculator/CalculatorControllerIT.java (1355 chars).
+
+--- backend calls read_file:
+  path: build.gradle.kts
+
+--- read_file result (success):
+plugins {
+    java
+    id("org.springframework.boot") version "3.5.16"
+    id("io.spring.dependency-management") version "1.1.7"
+}
+
+group = "com.example"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-validation")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+testing {
+    suites {
+        register<JvmTestSuite>("testIntegration") {
+            dependencies {
+                implementation(project())
+            }
+        }
+    }
+}
+
+configurations {
+    named("testIntegrationImplementation") { extendsFrom(testImplementation.get()) }
+    named("testIntegrationRuntimeOnly") { extendsFrom(testRuntimeOnly.get()) }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+tasks.check {
+    dependsOn(testing.suites.named("testIntegration"))
+}
+
+
+--- backend calls write_file:
+  path: build.gradle.kts
+  content:
+plugins {
+    java
+    id("org.springframework.boot") version "3.5.16"
+    id("io.spring.dependency-management") version "1.1.7"
+}
+
+group = "com.example"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+testing {
+    suites {
+        register<JvmTestSuite>("testIntegration") {
+            dependencies {
+                implementation(project())
+            }
+        }
+    }
+}
+
+configurations {
+    named("testIntegrationImplementation") { extendsFrom(testImplementation.get()) }
+    named("testIntegrationRuntimeOnly") { extendsFrom(testRuntimeOnly.get()) }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+tasks.check {
+    dependsOn(testing.suites.named("testIntegration"))
+}
+
+
+--- write_file result (success):
+Written build.gradle.kts (1017 chars).
+
+--- backend says:
+I've created the calculator-service project from scratch.
+
+**What was built:**
+- `settings.gradle.kts`, `build.gradle.kts` — Gradle Kotlin DSL, Java 25 toolchain, Spring Boot 3.5.16, `io.spring.dependency-management` 1.1.7, the mandated `test`/`testIntegration` suite setup.
+- `com.example.calculatorservice.CalculatorServiceApplication` — main class.
+- `com.example.calculatorservice.calculator` feature package:
+  - `Operation` enum (ADD, SUBTRACT, MULTIPLY, DIVIDE, POWER, SQRT).
+  - `CalculationResponse` record `{"result": <number>}`.
+  - `CalculatorService` — parses/validates operation and parameters, performs the math, throws `InvalidCalculationException` for unknown operation, missing `a`/`b`, division by zero, or sqrt of a negative number.
+  - `CalculatorController` — thin `GET /api/v1/calculator/{operation}?a=&b=` endpoint delegating to the service.
+  - `CalculatorExceptionHandler` (`@RestControllerAdvice`) — maps `InvalidCalculationException` to `400` via `ProblemDetail`; Spring's default handling already returns `400` for non-numeric query params (type mismatch).
+- `application.yml` with `spring.application.name` and virtual threads enabled.
+- Tests:
+  - `src/test/java/.../CalculatorServiceTest` — unit tests (JUnit 5 + AssertJ) for all operations and all error cases.
+  - `src/test/java/.../CalculatorControllerTest` — `@WebMvcTest` + `MockMvc` with `@MockitoBean CalculatorService`, covering the success case and every 400 scenario (unknown op, missing param, divide by zero, sqrt of negative, non-numeric param).
+  - `src/testIntegration/java/.../CalculatorServiceApplicationIT` — smoke test (`@SpringBootTest`, empty `contextLoads`).
+  - `src/testIntegration/java/.../CalculatorControllerIT` — real HTTP test (`RANDOM_PORT` + `TestRestTemplate`) for a success case and a 400 case.
+
+**Assumptions:**
+- Base package derived from the service name per convention: `com.example.calculatorservice`.
+- Numbers are represented as `double`/`Double` (task just says "number", no precision requirements).
+- `b` is optional at the transport level (`@RequestParam(required = false)`) so `sqrt` can omit it; the service enforces it's required for all other operations, returning 400 if missing.
+- No Jakarta Validation dependency added since there's no request-body DTO to validate; query-param presence/format is handled explicitly and via Spring's built-in type-mismatch → 400 behavior, keeping to "no dependencies unless needed".
+
+Not executed locally (no shell access per environment rules) — the pipeline will run `assemble`, `testClasses`, `testIntegrationClasses`, `test`, and `testIntegration`.
+
+final state: {'compile_status': True, 'build_attempts': 1, 'test_status': True, 'test_attempts': 1, 'failed_tests': [], 'review_approved': True, 'review_issues': [], 'review_rounds': 1}
+
+########## reviewer (reviewer:bb528057-a3f1-15d0-3826-cff7e81a71d8) ##########
+
+--- human:
+Review the project. The task the developer was solving:
+
+Create a Spring Boot service named calculator-service from scratch: a REST API for a basic calculator. GET /api/v1/calculator/{operation}?a=<number>&b=<number> returns JSON {"result": <number>}. Operations: add, subtract, multiply, divide, power (a to the power of b), sqrt (square root of a, b is not used). Division by zero, the square root of a negative number, an unknown operation or a missing parameter return 400. Use Java 25, the latest Spring Boot 3.5.x and Gradle Kotlin DSL. The Gradle wrapper is already in the project.
+
+--- reviewer calls list_files:
+
+
+--- list_files result (success):
+.gitignore
+build.gradle.kts
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
+gradlew
+gradlew.bat
+settings.gradle.kts
+src/main/java/com/example/calculatorservice/CalculatorServiceApplication.java
+src/main/java/com/example/calculatorservice/calculator/CalculationResponse.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorController.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorExceptionHandler.java
+src/main/java/com/example/calculatorservice/calculator/CalculatorService.java
+src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java
+src/main/java/com/example/calculatorservice/calculator/Operation.java
+src/main/resources/application.yml
+src/test/java/com/example/calculatorservice/calculator/CalculatorControllerTest.java
+src/test/java/com/example/calculatorservice/calculator/CalculatorServiceTest.java
+src/testIntegration/java/com/example/calculatorservice/CalculatorServiceApplicationIT.java
+src/testIntegration/java/com/example/calculatorservice/calculator/CalculatorControllerIT.java
+
+--- reviewer calls read_file:
+  path: build.gradle.kts
+
+--- reviewer calls read_file:
+  path: settings.gradle.kts
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/CalculatorServiceApplication.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculationResponse.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorController.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorExceptionHandler.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/CalculatorService.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/InvalidCalculationException.java
+
+--- reviewer calls read_file:
+  path: src/main/java/com/example/calculatorservice/calculator/Operation.java
+
+--- reviewer calls read_file:
+  path: src/main/resources/application.yml
+
+--- read_file result (success):
+plugins {
+    java
+    id("org.springframework.boot") version "3.5.16"
+    id("io.spring.dependency-management") version "1.1.7"
+}
+
+group = "com.example"
+version = "0.0.1-SNAPSHOT"
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation("org.springframework.boot:spring-boot-starter-web")
+
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+testing {
+    suites {
+        register<JvmTestSuite>("testIntegration") {
+            dependencies {
+                implementation(project())
+            }
+        }
+    }
+}
+
+configurations {
+    named("testIntegrationImplementation") { extendsFrom(testImplementation.get()) }
+    named("testIntegrationRuntimeOnly") { extendsFrom(testRuntimeOnly.get()) }
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
+}
+
+tasks.check {
+    dependsOn(testing.suites.named("testIntegration"))
+}
+
+
+--- read_file result (success):
+rootProject.name = "calculator-service"
+
+
+--- read_file result (success):
+package com.example.calculatorservice;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class CalculatorServiceApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(CalculatorServiceApplication.class, args);
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+/**
+ * Result of a calculator operation.
+ */
+public record CalculationResponse(double result) {
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/api/v1/calculator")
+class CalculatorController {
+
+    private final CalculatorService calculatorService;
+
+    CalculatorController(CalculatorService calculatorService) {
+        this.calculatorService = calculatorService;
+    }
+
+    @GetMapping("/{operation}")
+    CalculationResponse calculate(
+            @PathVariable String operation,
+            @RequestParam(required = false) Double a,
+            @RequestParam(required = false) Double b) {
+        return calculatorService.calculate(operation, a, b);
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ProblemDetail;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+@RestControllerAdvice
+class CalculatorExceptionHandler {
+
+    @ExceptionHandler(InvalidCalculationException.class)
+    ProblemDetail handleInvalidCalculation(InvalidCalculationException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import java.util.Locale;
+import org.springframework.stereotype.Service;
+
+@Service
+class CalculatorService {
+
+    CalculationResponse calculate(String operation, Double a, Double b) {
+        Operation op = parseOperation(operation);
+        validateParameters(op, a, b);
+        double result = switch (op) {
+            case ADD -> a + b;
+            case SUBTRACT -> a - b;
+            case MULTIPLY -> a * b;
+            case DIVIDE -> divide(a, b);
+            case POWER -> Math.pow(a, b);
+            case SQRT -> sqrt(a);
+        };
+        return new CalculationResponse(result);
+    }
+
+    private Operation parseOperation(String operation) {
+        try {
+            return Operation.valueOf(operation.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new InvalidCalculationException("Unknown operation: " + operation);
+        }
+    }
+
+    private void validateParameters(Operation operation, Double a, Double b) {
+        if (a == null) {
+            throw new InvalidCalculationException("Missing required parameter: a");
+        }
+        if (operation != Operation.SQRT && b == null) {
+            throw new InvalidCalculationException("Missing required parameter: b");
+        }
+    }
+
+    private double divide(double a, double b) {
+        if (b == 0) {
+            throw new InvalidCalculationException("Division by zero is not allowed");
+        }
+        return a / b;
+    }
+
+    private double sqrt(double a) {
+        if (a < 0) {
+            throw new InvalidCalculationException("Square root of a negative number is not allowed");
+        }
+        return Math.sqrt(a);
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+/**
+ * Thrown when a calculation request is invalid: an unknown operation, a missing
+ * parameter, division by zero or the square root of a negative number.
+ */
+public class InvalidCalculationException extends RuntimeException {
+
+    public InvalidCalculationException(String message) {
+        super(message);
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+/**
+ * Supported calculator operations.
+ */
+enum Operation {
+    ADD,
+    SUBTRACT,
+    MULTIPLY,
+    DIVIDE,
+    POWER,
+    SQRT
+}
+
+
+--- read_file result (success):
+spring:
+  application:
+    name: calculator-service
+  threads:
+    virtual:
+      enabled: true
+
+
+--- reviewer calls read_file:
+  path: src/test/java/com/example/calculatorservice/calculator/CalculatorControllerTest.java
+
+--- reviewer calls read_file:
+  path: src/test/java/com/example/calculatorservice/calculator/CalculatorServiceTest.java
+
+--- reviewer calls read_file:
+  path: src/testIntegration/java/com/example/calculatorservice/CalculatorServiceApplicationIT.java
+
+--- reviewer calls read_file:
+  path: src/testIntegration/java/com/example/calculatorservice/calculator/CalculatorControllerIT.java
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+
+@WebMvcTest(CalculatorController.class)
+class CalculatorControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private CalculatorService calculatorService;
+
+    @Test
+    void shouldReturnResultForValidOperation() throws Exception {
+        // given
+        given(calculatorService.calculate("add", 2.0, 3.0)).willReturn(new CalculationResponse(5.0));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "2").param("b", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.result").value(5.0));
+    }
+
+    @Test
+    void shouldReturn400WhenOperationIsUnknown() throws Exception {
+        // given
+        given(calculatorService.calculate(eq("modulo"), any(), any()))
+                .willThrow(new InvalidCalculationException("Unknown operation: modulo"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/modulo").param("a", "1").param("b", "2"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenParameterIsMissing() throws Exception {
+        // given
+        given(calculatorService.calculate(anyString(), any(), any()))
+                .willThrow(new InvalidCalculationException("Missing required parameter: b"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "1"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenDividingByZero() throws Exception {
+        // given
+        given(calculatorService.calculate("divide", 1.0, 0.0))
+                .willThrow(new InvalidCalculationException("Division by zero is not allowed"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/divide").param("a", "1").param("b", "0"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenSquareRootOfNegativeNumber() throws Exception {
+        // given
+        given(calculatorService.calculate(eq("sqrt"), eq(-4.0), any()))
+                .willThrow(new InvalidCalculationException("Square root of a negative number is not allowed"));
+
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/sqrt").param("a", "-4"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldReturn400WhenParameterAIsNotANumber() throws Exception {
+        // when / then
+        mockMvc.perform(get("/api/v1/calculator/add").param("a", "not-a-number").param("b", "2"))
+                .andExpect(status().isBadRequest());
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import org.junit.jupiter.api.Test;
+
+class CalculatorServiceTest {
+
+    private final CalculatorService calculatorService = new CalculatorService();
+
+    @Test
+    void shouldAddTwoNumbers() {
+        // given
+        String operation = "add";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 2.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(5.0);
+    }
+
+    @Test
+    void shouldSubtractTwoNumbers() {
+        // given
+        String operation = "subtract";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 5.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(2.0);
+    }
+
+    @Test
+    void shouldMultiplyTwoNumbers() {
+        // given
+        String operation = "multiply";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 4.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(12.0);
+    }
+
+    @Test
+    void shouldDivideTwoNumbers() {
+        // given
+        String operation = "divide";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 6.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(2.0);
+    }
+
+    @Test
+    void shouldThrowWhenDividingByZero() {
+        // given
+        String operation = "divide";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 6.0, 0.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldRaiseToPower() {
+        // given
+        String operation = "power";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 2.0, 3.0);
+
+        // then
+        assertThat(response.result()).isEqualTo(8.0);
+    }
+
+    @Test
+    void shouldComputeSquareRoot() {
+        // given
+        String operation = "sqrt";
+
+        // when
+        CalculationResponse response = calculatorService.calculate(operation, 9.0, null);
+
+        // then
+        assertThat(response.result()).isEqualTo(3.0);
+    }
+
+    @Test
+    void shouldThrowWhenSquareRootOfNegativeNumber() {
+        // given
+        String operation = "sqrt";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, -9.0, null))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenOperationIsUnknown() {
+        // given
+        String operation = "modulo";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 1.0, 2.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenParameterAIsMissing() {
+        // given
+        String operation = "add";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, null, 2.0))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+
+    @Test
+    void shouldThrowWhenParameterBIsMissingForNonSqrtOperation() {
+        // given
+        String operation = "add";
+
+        // when / then
+        assertThatThrownBy(() -> calculatorService.calculate(operation, 1.0, null))
+                .isInstanceOf(InvalidCalculationException.class);
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+
+@SpringBootTest
+class CalculatorServiceApplicationIT {
+
+    @Test
+    void contextLoads() {
+    }
+}
+
+
+--- read_file result (success):
+package com.example.calculatorservice.calculator;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+class CalculatorControllerIT {
+
+    @Autowired
+    private TestRestTemplate restTemplate;
+
+    @Test
+    void shouldAddTwoNumbersOverHttp() {
+        // when
+        ResponseEntity<CalculationResponse> response =
+                restTemplate.getForEntity("/api/v1/calculator/add?a=2&b=3", CalculationResponse.class);
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().result()).isEqualTo(5.0);
+    }
+
+    @Test
+    void shouldReturn400ForUnknownOperationOverHttp() {
+        // when
+        ResponseEntity<String> response =
+                restTemplate.getForEntity("/api/v1/calculator/modulo?a=1&b=2", String.class);
+
+        // then
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+}
+
+
+--- reviewer calls read_file:
+  path: gradle/wrapper/gradle-wrapper.properties
+
+--- read_file result (success):
+distributionBase=GRADLE_USER_HOME
+distributionPath=wrapper/dists
+distributionUrl=https\://services.gradle.org/distributions/gradle-9.8.0-bin.zip
+networkTimeout=10000
+retries=0
+retryBackOffMs=500
+validateDistributionUrl=true
+zipStoreBase=GRADLE_USER_HOME
+zipStorePath=wrapper/dists
+
+
+--- reviewer calls read_file:
+  path: .gitignore
+
+--- read_file result (success):
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**
+!**/src/test/**
+
+### IDE ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+out/
+
+### macOS ###
+.DS_Store
+
+
+--- reviewer says:
+{"approved": true, "issues": []}
+
+review: approved=True issues=[]

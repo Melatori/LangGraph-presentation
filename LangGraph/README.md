@@ -82,6 +82,16 @@ When the agent asks a question, `main.py` prints it as `agent asks: ...`. In a t
 
 The demo builds a calculator service from scratch.
 
+If the pipeline can't run on the presentation machine, show the recorded run of the same task in `../presentation/demo-run/`; the code it produced is in `../application/`:
+
+| File | What it shows |
+|---|---|
+| `calc1.log` | The terminal output: who passes control to whom, the per-node time and token table. |
+| `calc1-messages.log` | The full conversation: the developer's messages, every tool call with the file contents, the reviewer's reads and verdict. |
+| `calc1-history.log` | The saved checkpoints (`--history`): the state after every step. |
+
+The three `write_file` errors "outside of the project directory" in these logs came from a bug in parallel file writes that has been fixed since.
+
 1. **Empty `application/`:** keep only the Gradle wrapper, `.gitignore` and `.git`:
    ```powershell
    Remove-Item -Recurse -Force ..\application\build.gradle.kts, ..\application\settings.gradle.kts, ..\application\src, ..\application\build, ..\application\.gradle -ErrorAction SilentlyContinue
