@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: calculator-service
+  threads:
+    virtual:
+      enabled: true

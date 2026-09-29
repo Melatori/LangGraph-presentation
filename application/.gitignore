@@ -1,0 +1,16 @@
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!**/src/main/**
+!**/src/test/**
+
+### IDE ###
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+out/
+
+### macOS ###
+.DS_Store

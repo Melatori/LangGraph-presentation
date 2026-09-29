@@ -1,0 +1,12 @@
+{
+  "name": "local-plugins",
+  "owner": { "name": "Melatori", "email": "melatori@gmail.com" },
+  "metadata": { "description": "Local Claude Code plugins" },
+  "plugins": [
+    {
+      "name": "java-spring-dev",
+      "source": "./java-spring-plugin",
+      "description": "Senior Java/Spring Boot developer"
+    }
+  ]
+}

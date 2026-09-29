@@ -1,0 +1,7 @@
+{
+  "name": "java-spring-dev",
+  "version": "1.0.0",
+  "description": "Subagent: senior Java developer specializing in Spring Boot, with a set of best practices",
+  "author": { "name": "Melatori", "email": "melatori@gmail.com" },
+  "keywords": ["java", "spring", "spring-boot", "agent"]
+}
